@@ -32,9 +32,9 @@ export const SCHEDULE_CATEGORIES: ScheduleCategoryDef[] = [
 ];
 
 export const SCHEDULE_ASSIGNEES = [
-  { id: "mei", name: "美玲（女兒）" },
-  { id: "wei", name: "阿偉（兒子）" },
-  { id: "aide", name: "居服員" },
+  { id: "mei", name: "家屬A" },
+  { id: "wei", name: "家屬B" },
+  { id: "aide", name: "照護人員A" },
   { id: "unset", name: "未指定" },
 ] as const;
 

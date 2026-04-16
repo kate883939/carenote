@@ -11,25 +11,25 @@ export interface CareReceiver {
 
 export const careReceivers: CareReceiver[] = [
   {
-    id: "wang-nainai",
-    name: "王奶奶",
-    relationship: "母親",
-    age: 82,
+    id: "case-a",
+    name: "個案A",
+    relationship: "家屬",
+    age: 80,
     avatar: "👵",
-    conditions: ["高血壓", "糖尿病", "輕度失智"],
-    medications: ["降血壓藥", "血糖藥", "維生素D"],
-    notes: "早晚需量血壓，飯後半小時服藥。不喜歡吃太鹹的食物。",
+    conditions: ["慢性病管理", "行動力下降"],
+    medications: ["口服藥物A", "口服藥物B"],
+    notes: "示範資料：每日固定量測與記錄，飲食以清淡為主。",
   },
   {
-    id: "chen-yeye",
-    name: "陳爺爺",
-    relationship: "公公",
-    age: 78,
+    id: "case-b",
+    name: "個案B",
+    relationship: "家屬",
+    age: 76,
     avatar: "👴",
-    conditions: ["退化性關節炎", "高血脂"],
-    medications: ["止痛藥（需要時）", "降血脂藥"],
-    notes: "膝蓋不好，上下樓梯需要攙扶。每週二、四復健。",
+    conditions: ["關節不適", "慢性病管理"],
+    medications: ["口服藥物C", "復健相關藥物"],
+    notes: "示範資料：需留意移動安全並配合復健計畫。",
   },
 ];
 
-export const DEFAULT_RECEIVER_ID = "wang-nainai";
+export const DEFAULT_RECEIVER_ID = "case-a";
