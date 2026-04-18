@@ -100,7 +100,8 @@ export default function UserProfilePage() {
               className="w-full h-11 rounded-lg border-2 border-border bg-white px-3 text-sm font-semibold text-flat-dark outline-none focus-visible:border-flat-blue focus-visible:ring-2 focus-visible:ring-flat-blue/25"
             />
           </div>
-          <div>
+          {/* 對應行程負責人：先隱藏；要顯示時移除外層 hidden */}
+          <div className="hidden" aria-hidden>
             <label htmlFor="user-linked-assignee" className="text-xs font-bold text-muted-foreground block mb-1">
               對應行程負責人（指派時顯示你的當日狀態）
             </label>
@@ -109,6 +110,7 @@ export default function UserProfilePage() {
               value={linkedAssigneeId}
               onChange={(e) => setLinkedAssigneeId(e.target.value as AssigneeId)}
               className="w-full h-11 rounded-lg border-2 border-border bg-white px-3 text-sm font-semibold text-flat-dark outline-none focus-visible:border-flat-blue focus-visible:ring-2 focus-visible:ring-flat-blue/25"
+              tabIndex={-1}
             >
               {SCHEDULE_ASSIGNEES.map((a) => (
                 <option key={a.id} value={a.id}>
