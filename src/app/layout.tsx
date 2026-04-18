@@ -4,6 +4,7 @@ import { Noto_Sans_TC } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/bottom-nav";
 import { CareReceiverProvider } from "@/contexts/care-receiver-context";
+import { ScheduleEventsProvider } from "@/contexts/schedule-events-context";
 
 const outfit = Outfit({
   variable: "--font-heading",
@@ -41,8 +42,10 @@ export default function RootLayout({
         {/* iOS Safari: register body as clickable so React delegated click events bubble correctly */}
         <script dangerouslySetInnerHTML={{ __html: `document.body.setAttribute('onclick','')` }} />
         <CareReceiverProvider>
-          <main className="pb-20">{children}</main>
-          <BottomNav />
+          <ScheduleEventsProvider>
+            <main className="pb-20">{children}</main>
+            <BottomNav />
+          </ScheduleEventsProvider>
         </CareReceiverProvider>
       </body>
     </html>

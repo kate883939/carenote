@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCareReceiver } from "@/contexts/care-receiver-context";
+import { useScheduleEvents } from "@/contexts/schedule-events-context";
+import { ScheduleTodayEventRow } from "@/components/schedule-today-event-row";
+import { toYMD } from "@/lib/schedule";
 import {
   Mic,
   PenLine,
@@ -19,14 +22,6 @@ import {
   CircleCheck,
   Sparkles,
 } from "lucide-react";
-
-const todaySchedule = [
-  { time: "08:00", title: "早餐用藥", done: true },
-  { time: "10:30", title: "復健運動", done: true },
-  { time: "12:00", title: "午餐", done: false },
-  { time: "14:00", title: "回診 — 神經內科", done: false },
-  { time: "18:00", title: "晚餐用藥", done: false },
-];
 
 const recentRecords = [
   { time: "今天 09:12", category: "用藥", preview: "早餐後服用降血壓藥一顆，血糖藥一顆", color: "bg-flat-blue" },
@@ -60,6 +55,14 @@ function HomePageContent() {
   const [showToast, setShowToast] = useState(false);
   const searchParams = useSearchParams();
   const { current } = useCareReceiver();
+  const { events, toggleEventDone } = useScheduleEvents();
+
+  const todayYmd = toYMD(new Date());
+  const todayEvents = useMemo(() => {
+    return events
+      .filter((e) => e.date === todayYmd)
+      .sort((a, b) => a.time.localeCompare(b.time));
+  }, [events, todayYmd]);
 
   useEffect(() => setMounted(true), []);
 
@@ -188,38 +191,25 @@ function HomePageContent() {
 
       {/* Today's Schedule — Gray Block */}
       <section className="bg-flat-gray px-5 py-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-extrabold tracking-tight text-flat-dark flex items-center gap-2">
-            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
-              <CalendarDays className="w-5 h-5 text-flat-blue" />
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-extrabold tracking-tight text-flat-dark flex items-center gap-2">
+            <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center">
+              <CalendarDays className="w-4 h-4 text-flat-blue" />
             </div>
             今日行程
           </h2>
-          <Link href="/schedule" className="text-sm text-flat-blue font-semibold flex items-center gap-0.5 hover:underline">
-            查看全部 <ChevronRight className="w-4 h-4" />
+          <Link href="/schedule" className="text-xs text-flat-blue font-semibold flex items-center gap-0.5 hover:underline">
+            查看全部 <ChevronRight className="w-3.5 h-3.5" />
           </Link>
         </div>
-        <div className="space-y-2">
-          {todaySchedule.map((item, i) => (
-            <div
-              key={i}
-              className={`flex items-center gap-3 bg-white rounded-lg px-4 py-3.5 transition-all duration-200 hover:scale-[1.02] cursor-pointer ${
-                item.done ? "opacity-50" : ""
-              }`}
-            >
-              <div
-                className={`w-4 h-4 rounded-sm shrink-0 border-2 ${
-                  item.done ? "bg-flat-emerald border-flat-emerald" : "border-flat-gray-dark"
-                }`}
-              />
-              <span className="text-sm text-muted-foreground w-12 shrink-0 font-semibold">
-                {item.time}
-              </span>
-              <span className={`font-medium ${item.done ? "line-through" : "text-flat-dark"}`}>
-                {item.title}
-              </span>
-            </div>
-          ))}
+        <div className="space-y-1.5">
+          {todayEvents.length === 0 ? (
+            <p className="text-xs text-muted-foreground font-medium py-2 text-center">今日尚無行程</p>
+          ) : (
+            todayEvents.slice(0, 5).map((ev) => (
+              <ScheduleTodayEventRow key={ev.id} ev={ev} onToggle={toggleEventDone} compact />
+            ))
+          )}
         </div>
       </section>
 

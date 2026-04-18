@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { CalendarDays, Plus, Check } from "lucide-react";
+import { CalendarDays, Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,12 +17,14 @@ import {
   type AssigneeId,
   SCHEDULE_CATEGORIES,
   SCHEDULE_ASSIGNEES,
-  createDefaultScheduleEvents,
   toYMD,
   sortEventsByDateTime,
   getCategoryById,
   getAssigneeName,
 } from "@/lib/schedule";
+import { useScheduleEvents } from "@/contexts/schedule-events-context";
+import { AssigneeBadge, eventCardSurface } from "@/components/schedule-ui";
+import { ScheduleTodayEventRow } from "@/components/schedule-today-event-row";
 
 const weekDayLabels = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -95,27 +97,6 @@ function getWeekDates(anchor: Date, events: ScheduleEvent[]) {
   });
 }
 
-function AssigneeBadge({ name }: { name: string }) {
-  return (
-    <span
-      className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-lg border border-flat-emerald/45 bg-flat-emerald-light px-2 py-1 shadow-sm"
-      title={`負責人：${name}`}
-    >
-      <span className="shrink-0 rounded-md bg-flat-emerald/30 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-flat-emerald-dark">
-        負責人
-      </span>
-      <span className="min-w-0 truncate text-xs font-extrabold text-flat-dark">{name}</span>
-    </span>
-  );
-}
-
-/** 一般 / 重要 行程卡片底色與邊框 */
-function eventCardSurface(ev: ScheduleEvent): string {
-  if (!ev.important) return "bg-flat-gray";
-  if (ev.done) return "bg-amber-50/80 border-l-4 border-amber-500";
-  return "border-2 border-amber-400/85 bg-gradient-to-br from-amber-50 via-white to-amber-50/50 shadow-md shadow-amber-900/10 ring-1 ring-amber-200/60";
-}
-
 function SchedulePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -123,9 +104,7 @@ function SchedulePageContent() {
 
   const [tab, setTab] = useState<"today" | "week" | "month">("today");
   const [mounted, setMounted] = useState(false);
-  const [events, setEvents] = useState<ScheduleEvent[]>(() =>
-    createDefaultScheduleEvents(new Date())
-  );
+  const { events, setEvents, toggleEventDone } = useScheduleEvents();
   const [addOpen, setAddOpen] = useState(false);
   const [formTitle, setFormTitle] = useState("");
   const [formDate, setFormDate] = useState(() => toYMD(new Date()));
@@ -211,12 +190,6 @@ function SchedulePageContent() {
     setAddOpen(false);
   }
 
-  function toggleEventDone(id: string) {
-    setEvents((prev) =>
-      prev.map((ev) => (ev.id === id ? { ...ev, done: !ev.done } : ev))
-    );
-  }
-
   const inputClass =
     "w-full h-10 px-3 rounded-lg border border-border bg-background text-sm text-flat-dark font-medium outline-none focus-visible:ring-2 focus-visible:ring-flat-emerald/40";
 
@@ -269,51 +242,9 @@ function SchedulePageContent() {
       <div className="px-5 py-6">
         {tab === "today" && (
           <div className="space-y-2">
-            {todayEvents.map((ev) => {
-              const cat = getCategoryById(ev.categoryId);
-              const Icon = cat.icon;
-              return (
-                <button
-                  key={ev.id}
-                  type="button"
-                  onClick={() => toggleEventDone(ev.id)}
-                  className={`w-full text-left flex items-center gap-4 rounded-lg px-4 py-4 transition-all duration-200 hover:scale-[1.02] cursor-pointer ${eventCardSurface(ev)} ${
-                    ev.done ? "opacity-50" : ""
-                  }`}
-                >
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                      ev.done ? "bg-flat-emerald" : "bg-white border-2 border-flat-gray-dark"
-                    }`}
-                  >
-                    {ev.done ? (
-                      <Check className="w-5 h-5 text-white" />
-                    ) : (
-                      <Icon className="w-5 h-5 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap min-w-0">
-                      <span
-                        className={`font-semibold text-left ${ev.done ? "line-through text-muted-foreground" : "text-flat-dark"}`}
-                      >
-                        {ev.title}
-                      </span>
-                      {ev.important && (
-                        <span className="inline-flex shrink-0 items-center rounded-md bg-amber-500 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm">
-                          重要
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] text-muted-foreground font-medium">{cat.label}</span>
-                      <AssigneeBadge name={getAssigneeName(ev.assigneeId)} />
-                    </div>
-                  </div>
-                  <span className="text-sm text-muted-foreground font-bold shrink-0">{ev.time}</span>
-                </button>
-              );
-            })}
+            {todayEvents.map((ev) => (
+              <ScheduleTodayEventRow key={ev.id} ev={ev} onToggle={toggleEventDone} />
+            ))}
           </div>
         )}
 
