@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   ClockArrowUp,
   Search,
@@ -19,10 +20,12 @@ import {
   Activity,
   User,
   Image as PhotoIcon,
+  History,
 } from "lucide-react";
 import { BodyReportModal } from "@/components/body-report-modal";
 import { BodyReportRangeModal } from "@/components/body-report-range-modal";
 import type { BodyReportDateRange } from "@/lib/body-report-trend";
+import { appendRecordEditLog, ensureRecordEditLogSeeded } from "@/lib/record-edit-log";
 
 const SOURCE_ICONS: Record<string, typeof Mic> = {
   voice: Mic,
@@ -199,7 +202,17 @@ const mockRecords: HistoryRecord[] = [
   },
 ];
 
+function previewFromFullText(s: string): string {
+  const t = s.trim();
+  if (!t) return "";
+  const line = t.split(/\n/)[0] ?? t;
+  return line.length > 72 ? `${line.slice(0, 72)}…` : line;
+}
+
 export default function RecordPage() {
+  const [records, setRecords] = useState<HistoryRecord[]>(() =>
+    mockRecords.map((r) => ({ ...r, tags: [...r.tags] }))
+  );
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -212,6 +225,9 @@ export default function RecordPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [showBodyReportRange, setShowBodyReportRange] = useState(false);
   const [bodyReportRange, setBodyReportRange] = useState<BodyReportDateRange | null>(null);
+  /** 編輯紀錄文字 */
+  const [editTarget, setEditTarget] = useState<HistoryRecord | null>(null);
+  const [editText, setEditText] = useState("");
 
   const generateAiReport = useCallback((records: HistoryRecord[]) => {
     // Mock AI — 根據選取的紀錄產生摘要報告
@@ -249,6 +265,10 @@ export default function RecordPage() {
   }, []);
 
   useEffect(() => {
+    ensureRecordEditLogSeeded();
+  }, []);
+
+  useEffect(() => {
     if (showSharePreview && !aiReport) {
       setAiLoading(true);
       const timer = setTimeout(() => {
@@ -264,10 +284,10 @@ export default function RecordPage() {
     setShowSharePreview(true);
   };
 
-  const allCategories = Array.from(new Set(mockRecords.map((r) => r.category)));
+  const allCategories = Array.from(new Set(records.map((r) => r.category)));
   const categories = ["全部", ...allCategories];
 
-  const filtered = mockRecords.filter((r) => {
+  const filtered = records.filter((r) => {
     const matchCategory = !selectedCategory || selectedCategory === "全部" || r.category === selectedCategory;
     const matchSearch = !search || r.fullText.includes(search) || r.preview.includes(search);
     return matchCategory && matchSearch;
@@ -293,7 +313,37 @@ export default function RecordPage() {
     });
   };
 
-  const getSelectedRecords = () => mockRecords.filter((r) => selected.has(r.id));
+  const getSelectedRecords = () => records.filter((r) => selected.has(r.id));
+
+  function openEditRecord(r: HistoryRecord) {
+    setEditTarget(r);
+    setEditText(r.fullText);
+  }
+
+  function closeEditRecord() {
+    setEditTarget(null);
+    setEditText("");
+  }
+
+  function saveEditRecord() {
+    if (!editTarget) return;
+    const next = editText.trim();
+    if (!next) return;
+    const summary = previewFromFullText(next);
+    setRecords((prev) =>
+      prev.map((row) =>
+        row.id === editTarget.id ? { ...row, fullText: next, preview: summary } : row
+      )
+    );
+    appendRecordEditLog({
+      at: new Date().toISOString(),
+      editor: "家屬A",
+      action: "update",
+      recordId: editTarget.id,
+      recordSummary: summary,
+    });
+    closeEditRecord();
+  }
 
   const compileShareText = () => {
     const records = getSelectedRecords();
@@ -365,16 +415,27 @@ export default function RecordPage() {
       </div>
 
       <div className="px-5 py-5">
-        {/* Search */}
-        <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜尋紀錄內容..."
-            className="w-full h-12 pl-11 pr-4 rounded-lg bg-flat-gray border-0 text-base focus:bg-white focus:border-2 focus:border-flat-blue focus:outline-none font-medium"
-          />
+        {/* Search + 編輯紀錄 */}
+        <div className="flex gap-2 items-stretch mb-3">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜尋紀錄內容..."
+              className="w-full h-12 pl-11 pr-4 rounded-lg bg-flat-gray border-0 text-base focus:bg-white focus:border-2 focus:border-flat-blue focus:outline-none font-medium"
+            />
+          </div>
+          <Link
+            href="/record/history"
+            title="修改紀錄"
+            aria-label="修改紀錄"
+            className="shrink-0 flex h-12 items-center gap-1.5 rounded-lg bg-flat-gray px-2.5 text-flat-dark transition-colors duration-200 hover:bg-flat-gray-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flat-blue focus-visible:ring-offset-2 sm:px-3"
+          >
+            <History className="w-5 h-5 shrink-0" aria-hidden />
+            <span className="text-sm font-extrabold whitespace-nowrap">修改紀錄</span>
+          </Link>
         </div>
 
         {/* Category Filters */}
@@ -439,9 +500,21 @@ export default function RecordPage() {
                               {t}
                             </span>
                           ))}
-                          <span className="text-xs text-muted-foreground ml-auto flex items-center gap-1 font-semibold">
-                            <SourceIcon className="w-3.5 h-3.5" />
-                            {r.time}
+                          <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditRecord(r);
+                              }}
+                              className="rounded-md border border-flat-gray-dark/20 bg-white/90 px-2 py-0.5 text-[11px] font-extrabold text-flat-blue shadow-sm hover:bg-white active:scale-[0.98] transition-transform"
+                            >
+                              編輯
+                            </button>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1 font-semibold">
+                              <SourceIcon className="w-3.5 h-3.5" />
+                              {r.time}
+                            </span>
                           </span>
                         </div>
 
@@ -605,6 +678,52 @@ export default function RecordPage() {
                 />
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 編輯紀錄文字 */}
+      {editTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="record-edit-title"
+          onClick={closeEditRecord}
+        >
+          <div
+            className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="record-edit-title" className="text-base font-extrabold text-flat-dark">
+              編輯紀錄內容
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground font-medium">
+              {editTarget.category} · {editTarget.date} {editTarget.time}
+            </p>
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              rows={6}
+              className="mt-3 w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-medium text-flat-dark outline-none focus-visible:ring-2 focus-visible:ring-flat-blue/40"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEditRecord}
+                className="h-10 rounded-lg px-4 text-sm font-bold text-flat-dark bg-flat-gray hover:bg-flat-gray-dark transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={saveEditRecord}
+                disabled={!editText.trim()}
+                className="h-10 rounded-lg px-4 text-sm font-bold text-white bg-flat-blue hover:bg-flat-blue-dark transition-colors disabled:pointer-events-none disabled:opacity-40"
+              >
+                儲存
+              </button>
+            </div>
           </div>
         </div>
       )}

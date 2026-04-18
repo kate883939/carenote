@@ -97,9 +97,13 @@ function HomePageContent() {
                 {mounted ? `${greeting}` : "照護聯絡簿"}
               </h1>
             </div>
-            <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center">
+            <Link
+              href="/user"
+              aria-label="使用者資料與本月有空／忙碌"
+              className="w-14 h-14 rounded-full bg-white flex items-center justify-center shrink-0 outline-none ring-offset-2 ring-offset-flat-blue transition-transform hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-white"
+            >
               <UserRound className="w-7 h-7 text-flat-blue" />
-            </div>
+            </Link>
           </div>
 
           {/* Care Receiver */}
@@ -227,10 +231,12 @@ function HomePageContent() {
           </Link>
         </div>
         <div className="space-y-3">
-          {recentRecords.map((r, i) => (
-            <div
-              key={i}
-              className="flex items-start gap-3 bg-flat-gray rounded-lg p-4 transition-all duration-200 hover:scale-[1.02] cursor-pointer"
+          {recentRecords.map((r) => (
+            <Link
+              key={`${r.time}-${r.preview}`}
+              href="/record"
+              aria-label={`前往照護紀錄：${r.category} ${r.time}`}
+              className="flex items-start gap-3 bg-flat-gray rounded-lg p-4 transition-all duration-200 hover:scale-[1.02] cursor-pointer active:scale-[0.99] outline-none focus-visible:ring-2 focus-visible:ring-flat-blue focus-visible:ring-offset-2"
             >
               <div className={`w-2 h-full min-h-[3rem] rounded-full ${r.color} shrink-0`} />
               <div className="flex-1 min-w-0">
@@ -242,7 +248,7 @@ function HomePageContent() {
                 </div>
                 <p className="text-sm leading-relaxed line-clamp-2 text-flat-dark">{r.preview}</p>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </section>

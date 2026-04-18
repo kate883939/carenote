@@ -12,13 +12,16 @@ import {
   FileText,
   Loader2,
   CalendarPlus,
+  Plus,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { parseFutureScheduleHint } from "@/lib/schedule-from-text";
 
 type Step = "choose" | "input" | "processing" | "confirm";
 
-const CATEGORIES = [
+type CategoryItem = { id: string; label: string };
+
+const BASE_CATEGORIES: CategoryItem[] = [
   { id: "medication", label: "用藥" },
   { id: "diet", label: "飲食" },
   { id: "excretion", label: "排泄" },
@@ -42,6 +45,14 @@ function RecordPageContent() {
   const [transcribedText, setTranscribedText] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [aiSuggested, setAiSuggested] = useState<string[]>([]);
+  const [customCategories, setCustomCategories] = useState<CategoryItem[]>([]);
+  const [addCategoryOpen, setAddCategoryOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+
+  const allCategories = useMemo(
+    () => [...BASE_CATEGORIES, ...customCategories],
+    [customCategories]
+  );
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -94,6 +105,24 @@ function RecordPageContent() {
       prev.includes(catId) ? prev.filter((c) => c !== catId) : [...prev, catId]
     );
   };
+
+  function addCustomCategory() {
+    const label = newCategoryName.trim();
+    if (!label) return;
+    const lower = label.toLowerCase();
+    const exists = [...BASE_CATEGORIES, ...customCategories].some(
+      (c) => c.label.trim().toLowerCase() === lower
+    );
+    if (exists) return;
+    const id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? `custom-${crypto.randomUUID()}`
+        : `custom-${Date.now()}`;
+    setCustomCategories((prev) => [...prev, { id, label }]);
+    setSelectedCategories((prev) => [...prev, id]);
+    setNewCategoryName("");
+    setAddCategoryOpen(false);
+  }
 
   const handleSave = () => {
     router.push("/?saved=true");
@@ -354,12 +383,13 @@ function RecordPageContent() {
               <p className="font-bold text-flat-dark mb-1">這筆紀錄屬於？</p>
               <p className="text-xs text-muted-foreground mb-3">可多選，系統已自動建議</p>
               <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map((cat) => {
+                {allCategories.map((cat) => {
                   const isSelected = selectedCategories.includes(cat.id);
                   const isSuggested = aiSuggested.includes(cat.id);
                   return (
                     <button
                       key={cat.id}
+                      type="button"
                       onClick={() => toggleCategory(cat.id)}
                       className={`px-4 py-2.5 rounded-md text-sm font-semibold transition-all duration-200 ${
                         isSelected
@@ -374,7 +404,60 @@ function RecordPageContent() {
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddCategoryOpen((o) => !o);
+                    setNewCategoryName("");
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-md text-sm font-semibold transition-all duration-200 border-2 border-dashed ${
+                    addCategoryOpen
+                      ? "border-flat-blue bg-flat-blue-light text-flat-blue"
+                      : "border-flat-blue/35 bg-white/90 text-flat-blue hover:bg-flat-blue-light/80"
+                  }`}
+                >
+                  <Plus className="w-4 h-4 shrink-0" strokeWidth={2.5} aria-hidden />
+                  新增
+                </button>
               </div>
+              {addCategoryOpen && (
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="輸入自訂分類名稱"
+                    maxLength={20}
+                    className="flex-1 min-h-10 rounded-lg border-2 border-border bg-white px-3 text-sm font-medium text-flat-dark outline-none focus-visible:border-flat-blue focus-visible:ring-2 focus-visible:ring-flat-blue/25"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomCategory();
+                      }
+                    }}
+                  />
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddCategoryOpen(false);
+                        setNewCategoryName("");
+                      }}
+                      className="h-10 flex-1 sm:flex-none px-4 rounded-lg text-sm font-bold bg-white border-2 border-flat-gray-dark text-flat-dark hover:bg-flat-gray transition-colors"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addCustomCategory}
+                      disabled={!newCategoryName.trim()}
+                      className="h-10 flex-1 sm:flex-none px-4 rounded-lg text-sm font-bold bg-flat-blue text-white hover:bg-flat-blue-dark transition-colors disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      加入
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}

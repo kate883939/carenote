@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CalendarDays, Plus } from "lucide-react";
 import {
@@ -17,12 +18,16 @@ import {
   type AssigneeId,
   SCHEDULE_CATEGORIES,
   SCHEDULE_ASSIGNEES,
+  ASSIGNEE_BUSY_DAY_THRESHOLD,
+  isAssigneeBusyForAssignment,
   toYMD,
   sortEventsByDateTime,
   getCategoryById,
   getAssigneeName,
+  getAssigneesSortedByAvailability,
 } from "@/lib/schedule";
 import { useScheduleEvents } from "@/contexts/schedule-events-context";
+import { useCurrentUser } from "@/contexts/current-user-context";
 import { AssigneeBadge, eventCardSurface } from "@/components/schedule-ui";
 import { ScheduleTodayEventRow } from "@/components/schedule-today-event-row";
 
@@ -61,21 +66,26 @@ function eventInMonthFixed(ev: ScheduleEvent, anchor: Date): boolean {
   return y === anchor.getFullYear() && m === anchor.getMonth() + 1;
 }
 
-function formatMonthDayLabel(ymd: string): string {
-  const [, m, d] = ymd.split("-");
-  return `${Number(m)}/${Number(d)}`;
-}
-
-const CATEGORY_MONTH_DOT: Record<ScheduleCategoryId, string> = {
-  medication: "bg-flat-blue",
-  medical: "bg-flat-emerald",
-  rehab: "bg-flat-amber",
-  meal: "bg-flat-amber",
-  care: "bg-[#8B5CF6]",
-  other: "bg-gray-400",
-};
-
 const weekDays = ["一", "二", "三", "四", "五", "六", "日"];
+
+/** 月曆列標（週日開頭，與常見行事曆一致） */
+const CALENDAR_WEEK_HEADERS = ["日", "一", "二", "三", "四", "五", "六"];
+
+/** 產生當月每一格：null 為補空白，Date 為當月某日 */
+function buildMonthCalendarCells(anchor: Date): (Date | null)[] {
+  const y = anchor.getFullYear();
+  const m = anchor.getMonth();
+  const first = new Date(y, m, 1);
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  const padStart = first.getDay();
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < padStart; i++) cells.push(null);
+  for (let d = 1; d <= lastDay; d++) {
+    cells.push(new Date(y, m, d));
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
 
 function getWeekDates(anchor: Date, events: ScheduleEvent[]) {
   const now = anchor;
@@ -97,6 +107,44 @@ function getWeekDates(anchor: Date, events: ScheduleEvent[]) {
   });
 }
 
+/** 與負責人選單一致：非忙碌＝有空（綠）、達當日忙碌門檻＝沒空（紅） */
+function DayAvailabilitySummaryCard(props: {
+  availableNames: string[];
+  busyNames: string[];
+}) {
+  const { availableNames, busyNames } = props;
+  return (
+    <div className="mb-3 rounded-lg border border-flat-gray-dark/15 bg-white/90 px-3 py-2.5 space-y-1.5 shadow-sm">
+      <p className="text-xs leading-relaxed flex flex-wrap items-baseline gap-y-0.5">
+        <span className="font-extrabold text-flat-dark shrink-0 mr-1">今天有空：</span>
+        {availableNames.length > 0 ? (
+          availableNames.map((name, i) => (
+            <span key={`avail-${i}-${name}`} className="font-semibold">
+              {i > 0 ? <span className="text-muted-foreground">、</span> : null}
+              <span className="text-flat-emerald">{name}</span>
+            </span>
+          ))
+        ) : (
+          <span className="text-muted-foreground font-semibold">無</span>
+        )}
+      </p>
+      <p className="text-xs leading-relaxed flex flex-wrap items-baseline gap-y-0.5">
+        <span className="font-extrabold text-flat-dark shrink-0 mr-1">今天沒空：</span>
+        {busyNames.length > 0 ? (
+          busyNames.map((name, i) => (
+            <span key={`busy-${i}-${name}`} className="font-semibold">
+              {i > 0 ? <span className="text-muted-foreground">、</span> : null}
+              <span className="text-flat-red">{name}</span>
+            </span>
+          ))
+        ) : (
+          <span className="text-muted-foreground font-semibold">無</span>
+        )}
+      </p>
+    </div>
+  );
+}
+
 function SchedulePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -105,13 +153,17 @@ function SchedulePageContent() {
   const [tab, setTab] = useState<"today" | "week" | "month">("today");
   const [mounted, setMounted] = useState(false);
   const { events, setEvents, toggleEventDone } = useScheduleEvents();
+  const { assigneeManualByDate } = useCurrentUser();
   const [addOpen, setAddOpen] = useState(false);
   const [formTitle, setFormTitle] = useState("");
   const [formDate, setFormDate] = useState(() => toYMD(new Date()));
   const [formTime, setFormTime] = useState("09:00");
   const [formCategory, setFormCategory] = useState<ScheduleCategoryId>("other");
-  const [formAssignee, setFormAssignee] = useState<AssigneeId>("unset");
+  const [formAssigneeIds, setFormAssigneeIds] = useState<AssigneeId[]>(["jiaC"]);
   const [formImportant, setFormImportant] = useState(false);
+  /** 本月分頁：月曆上選中的日期（null 時以下方列表預設顯示「今天」） */
+  const [selectedMonthDayYmd, setSelectedMonthDayYmd] = useState<string | null>(null);
+  const monthDayListAnchorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -129,7 +181,7 @@ function SchedulePageContent() {
     setFormTitle(rawTitle ? decodeURIComponent(rawTitle) : "");
     setFormTime(safeTime);
     setFormCategory("medical");
-    setFormAssignee("unset");
+    setFormAssigneeIds(["jiaC"]);
     setFormImportant(true);
     setAddOpen(true);
     router.replace("/schedule", { scroll: false });
@@ -154,7 +206,72 @@ function SchedulePageContent() {
     return events.filter((e) => eventInMonthFixed(e, anchor)).sort(sortEventsByDateTime);
   }, [events]);
 
+  const monthCalendarCells = useMemo(() => {
+    const anchor = new Date(now.getFullYear(), now.getMonth(), 1);
+    anchor.setHours(12, 0, 0, 0);
+    return buildMonthCalendarCells(anchor);
+  }, [now.getFullYear(), now.getMonth()]);
+
+  const monthEventCountByYmd = useMemo(() => {
+    const counts: Record<string, number> = {};
+    monthEvents.forEach((e) => {
+      counts[e.date] = (counts[e.date] ?? 0) + 1;
+    });
+    return counts;
+  }, [monthEvents]);
+
+  const activeMonthDayYmd = selectedMonthDayYmd ?? todayYmd;
+
+  const selectedDayEvents = useMemo(() => {
+    return events
+      .filter((e) => e.date === activeMonthDayYmd)
+      .sort((a, b) => a.time.localeCompare(b.time));
+  }, [events, activeMonthDayYmd]);
+
+  const peopleWithTasksOnSelectedDay = useMemo(() => {
+    const ids = [...new Set(selectedDayEvents.map((e) => e.assigneeId))];
+    return ids.map((id) => getAssigneeName(id));
+  }, [selectedDayEvents]);
+
+  const peopleFullyBusyOnSelectedDay = useMemo(() => {
+    return SCHEDULE_ASSIGNEES.filter((a) =>
+      isAssigneeBusyForAssignment(events, a.id, activeMonthDayYmd, assigneeManualByDate)
+    ).map((a) => a.name);
+  }, [events, activeMonthDayYmd, assigneeManualByDate]);
+
+  const peopleAvailableToday = useMemo(
+    () =>
+      SCHEDULE_ASSIGNEES.filter(
+        (a) => !isAssigneeBusyForAssignment(events, a.id, todayYmd, assigneeManualByDate)
+      ).map((a) => a.name),
+    [events, todayYmd, assigneeManualByDate]
+  );
+
+  const peopleBusyToday = useMemo(
+    () =>
+      SCHEDULE_ASSIGNEES.filter((a) =>
+        isAssigneeBusyForAssignment(events, a.id, todayYmd, assigneeManualByDate)
+      ).map((a) => a.name),
+    [events, todayYmd, assigneeManualByDate]
+  );
+
   const weekData = useMemo(() => getWeekDates(new Date(), events), [events]);
+
+  const assigneeFormOptions = useMemo(
+    () => getAssigneesSortedByAvailability(events, formDate, assigneeManualByDate),
+    [events, formDate, assigneeManualByDate]
+  );
+
+  useEffect(() => {
+    if (!addOpen) return;
+    setFormAssigneeIds((prev) => {
+      const busyIds = new Set(assigneeFormOptions.filter((o) => o.busy).map((o) => o.id));
+      const filtered = prev.filter((id) => !busyIds.has(id));
+      const next = filtered.length === 0 ? (["jiaC"] as AssigneeId[]) : filtered;
+      if (next.length === prev.length && next.every((id, i) => id === prev[i])) return prev;
+      return next;
+    });
+  }, [addOpen, assigneeFormOptions]);
 
   const tabs = [
     { id: "today" as const, label: "今日" },
@@ -162,31 +279,67 @@ function SchedulePageContent() {
     { id: "month" as const, label: "本月" },
   ];
 
+  function handleMonthDaySelect(ymd: string) {
+    setSelectedMonthDayYmd(ymd);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        monthDayListAnchorRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    });
+  }
+
   function openAddDialog() {
     setFormTitle("");
     setFormDate(toYMD(new Date()));
     setFormTime("09:00");
     setFormCategory("other");
-    setFormAssignee("unset");
+    setFormAssigneeIds(["jiaC"]);
     setFormImportant(false);
     setAddOpen(true);
+  }
+
+  function toggleFormAssignee(id: AssigneeId) {
+    const row = assigneeFormOptions.find((o) => o.id === id);
+    if (row?.busy) return;
+    setFormAssigneeIds((prev) => {
+      if (prev.includes(id)) {
+        const next = prev.filter((x) => x !== id);
+        if (next.length === 0) {
+          const firstFree = assigneeFormOptions.find((o) => !o.busy)?.id ?? "jiaC";
+          return [firstFree];
+        }
+        return next;
+      }
+      return [...prev, id];
+    });
   }
 
   function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault();
     const title = formTitle.trim();
     if (!title) return;
-    const next: ScheduleEvent = {
-      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `ev-${Date.now()}`,
+    const assigneesForSubmit: AssigneeId[] = [...new Set(formAssigneeIds)];
+    if (assigneesForSubmit.length === 0) return;
+    const base = {
       title,
       date: formDate,
       time: formTime,
       categoryId: formCategory,
-      assigneeId: formAssignee,
-      done: false,
-      ...(formImportant ? { important: true } : {}),
+      done: false as const,
+      ...(formImportant ? { important: true as const } : {}),
     };
-    setEvents((prev) => [...prev, next].sort(sortEventsByDateTime));
+    const newEvents: ScheduleEvent[] = assigneesForSubmit.map((assigneeId) => ({
+      ...base,
+      id:
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `ev-${Date.now()}-${assigneeId}`,
+      assigneeId,
+    }));
+    setEvents((prev) => [...prev, ...newEvents].sort(sortEventsByDateTime));
     setAddOpen(false);
   }
 
@@ -225,7 +378,10 @@ function SchedulePageContent() {
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setTab(t.id)}
+                onClick={() => {
+                  setTab(t.id);
+                  if (t.id === "month") setSelectedMonthDayYmd(null);
+                }}
                 className={`flex-1 py-2.5 rounded-lg text-base font-bold transition-all duration-200 ${
                   tab === t.id
                     ? "bg-white text-flat-emerald"
@@ -242,6 +398,10 @@ function SchedulePageContent() {
       <div className="px-5 py-6">
         {tab === "today" && (
           <div className="space-y-2">
+            <DayAvailabilitySummaryCard
+              availableNames={peopleAvailableToday}
+              busyNames={peopleBusyToday}
+            />
             {todayEvents.map((ev) => (
               <ScheduleTodayEventRow key={ev.id} ev={ev} onToggle={toggleEventDone} />
             ))}
@@ -274,6 +434,11 @@ function SchedulePageContent() {
                 </button>
               ))}
             </div>
+
+            <DayAvailabilitySummaryCard
+              availableNames={peopleAvailableToday}
+              busyNames={peopleBusyToday}
+            />
 
             <p className="text-sm text-muted-foreground font-bold tracking-wider uppercase mb-3">本週行程</p>
             <div className="space-y-2">
@@ -314,45 +479,120 @@ function SchedulePageContent() {
 
         {tab === "month" && (
           <div>
-            <p className="text-muted-foreground font-medium mb-1">
-              {mounted ? now.toLocaleDateString("zh-TW", { year: "numeric", month: "long" }) : "\u00A0"}
-            </p>
-            <p className="text-3xl font-extrabold text-flat-dark mb-6">{monthEvents.length} 個行程</p>
+            <div className="flex items-end justify-between gap-3 mb-4">
+              <div>
+                <p className="text-muted-foreground font-medium text-sm">
+                  {mounted
+                    ? now.toLocaleDateString("zh-TW", { year: "numeric", month: "long" })
+                    : "\u00A0"}
+                </p>
+                <p className="text-2xl font-extrabold text-flat-dark mt-0.5">
+                  本月 <span className="text-lg font-bold text-muted-foreground">{monthEvents.length} 筆</span>
+                </p>
+              </div>
+            </div>
 
-            <div className="space-y-2">
-              {monthEvents.length === 0 ? (
-                <p className="text-sm text-muted-foreground font-medium py-4 text-center">本月尚無行程</p>
-              ) : (
-                monthEvents.map((ev) => (
-                  <div
-                    key={ev.id}
-                    className={`flex items-center gap-3 rounded-lg px-4 py-3.5 transition-all duration-200 hover:scale-[1.02] cursor-pointer ${eventCardSurface(ev)}`}
-                  >
-                    <div
-                      className={`w-3 h-3 rounded-sm shrink-0 ${CATEGORY_MONTH_DOT[ev.categoryId]}`}
-                    />
-                    <span className="text-sm font-extrabold text-flat-dark w-10 shrink-0">
-                      {formatMonthDayLabel(ev.date)}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap min-w-0">
-                        <span className="font-semibold text-flat-dark">{ev.title}</span>
-                        {ev.important && (
-                          <span className="inline-flex shrink-0 items-center rounded-md bg-amber-500 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm">
-                            重要
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                        <span className="text-[11px] text-muted-foreground font-medium">
-                          {getCategoryById(ev.categoryId).label} · {ev.time}
-                        </span>
-                        <AssigneeBadge name={getAssigneeName(ev.assigneeId)} />
-                      </div>
-                    </div>
+            {/* 月曆 */}
+            <div className="rounded-xl border border-flat-gray-dark/20 bg-white p-3 shadow-sm">
+              <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
+                {CALENDAR_WEEK_HEADERS.map((h) => (
+                  <div key={h} className="py-1.5 text-[11px] font-extrabold text-muted-foreground">
+                    {h}
                   </div>
-                ))
-              )}
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {monthCalendarCells.map((cell, idx) => {
+                  if (!cell) {
+                    return <div key={`empty-${idx}`} className="aspect-square min-h-[2.75rem]" />;
+                  }
+                  const ymd = toYMD(cell);
+                  const isToday = ymd === todayYmd;
+                  const isSelected = ymd === activeMonthDayYmd;
+                  const count = monthEventCountByYmd[ymd] ?? 0;
+                  return (
+                    <button
+                      key={ymd}
+                      type="button"
+                      onClick={() => handleMonthDaySelect(ymd)}
+                      className={`aspect-square min-h-[2.75rem] rounded-lg flex flex-col items-center justify-center gap-0.5 text-sm font-extrabold transition-all duration-150 active:scale-95 ${
+                        isSelected
+                          ? "bg-flat-emerald text-white ring-2 ring-flat-emerald ring-offset-2 ring-offset-white"
+                          : isToday
+                            ? "bg-flat-emerald/15 text-flat-emerald-dark ring-1 ring-flat-emerald/40"
+                            : "bg-flat-gray text-flat-dark hover:bg-flat-gray-dark"
+                      }`}
+                    >
+                      <span>{cell.getDate()}</span>
+                      {count > 0 && (
+                        <span className="flex gap-0.5 justify-center" aria-hidden>
+                          {Array.from({ length: Math.min(count, 3) }).map((_, j) => (
+                            <span
+                              key={j}
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                isSelected ? "bg-white/90" : "bg-flat-emerald"
+                              }`}
+                            />
+                          ))}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 選定日期的行程（月曆點選後捲動錨點） */}
+            <div ref={monthDayListAnchorRef} className="mt-5 scroll-mt-6">
+              <p className="text-sm font-extrabold text-flat-dark mb-2 flex items-center gap-2">
+                <span className="text-muted-foreground font-semibold">選定日期</span>
+                {mounted
+                  ? parseYMD(activeMonthDayYmd).toLocaleDateString("zh-TW", {
+                      month: "numeric",
+                      day: "numeric",
+                      weekday: "short",
+                    })
+                  : activeMonthDayYmd}
+              </p>
+              <div className="mb-3 rounded-lg border border-flat-gray-dark/15 bg-white/90 px-3 py-2.5 space-y-1.5 shadow-sm">
+                <p className="text-xs leading-relaxed flex flex-wrap items-baseline gap-y-0.5">
+                  <span className="font-extrabold text-flat-dark shrink-0 mr-1">有任務：</span>
+                  {peopleWithTasksOnSelectedDay.length > 0 ? (
+                    peopleWithTasksOnSelectedDay.map((name, i) => (
+                      <span key={`task-${i}-${name}`} className="font-semibold">
+                        {i > 0 ? <span className="text-muted-foreground">、</span> : null}
+                        <span className="text-flat-emerald">{name}</span>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-muted-foreground font-semibold">無</span>
+                  )}
+                </p>
+                <p className="text-xs leading-relaxed flex flex-wrap items-baseline gap-y-0.5">
+                  <span className="font-extrabold text-flat-dark shrink-0 mr-1">整日沒空：</span>
+                  {peopleFullyBusyOnSelectedDay.length > 0 ? (
+                    peopleFullyBusyOnSelectedDay.map((name, i) => (
+                      <span key={`busy-${i}-${name}`} className="font-semibold">
+                        {i > 0 ? <span className="text-muted-foreground">、</span> : null}
+                        <span className="text-flat-red">{name}</span>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-muted-foreground font-semibold">無</span>
+                  )}
+                </p>
+              </div>
+              <div className="space-y-2">
+                {selectedDayEvents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground font-medium py-6 text-center rounded-lg bg-flat-gray">
+                    這天尚無行程
+                  </p>
+                ) : (
+                  selectedDayEvents.map((ev) => (
+                    <ScheduleTodayEventRow key={ev.id} ev={ev} onToggle={toggleEventDone} compact />
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -426,26 +666,59 @@ function SchedulePageContent() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label htmlFor="sched-assignee" className="flex items-center gap-2 mb-1">
+              <fieldset className="min-w-0 border-0 p-0 m-0">
+                <legend className="flex items-center gap-2 mb-2 w-full border-0 p-0">
                   <span className="rounded-md bg-flat-emerald/25 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-flat-emerald-dark ring-1 ring-inset ring-flat-emerald/35">
                     負責人
                   </span>
-                  <span className="text-xs font-semibold text-flat-dark">指定誰執行或提醒</span>
-                </label>
-                <select
-                  id="sched-assignee"
-                  value={formAssignee}
-                  onChange={(e) => setFormAssignee(e.target.value as AssigneeId)}
-                  className={inputClass}
-                >
-                  {SCHEDULE_ASSIGNEES.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <span className="text-xs font-semibold text-flat-dark">指定誰執行或提醒（可多選）</span>
+                </legend>
+                <div className="rounded-lg border border-border bg-background px-3 py-2.5 space-y-2">
+                  {assigneeFormOptions.map((a) => {
+                    const checked = formAssigneeIds.includes(a.id);
+                    return (
+                      <label
+                        key={a.id}
+                        className={`flex items-center gap-3 rounded-md px-2 py-2 transition-colors ${
+                          a.busy
+                            ? "cursor-not-allowed opacity-55"
+                            : "cursor-pointer hover:bg-flat-gray/80"
+                        }`}
+                      >
+                        <span
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                            a.busy ? "bg-flat-red" : "bg-flat-emerald"
+                          }`}
+                          aria-hidden
+                        />
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 shrink-0 rounded border-flat-gray-dark accent-flat-emerald"
+                          checked={checked}
+                          disabled={a.busy}
+                          onChange={() => toggleFormAssignee(a.id)}
+                        />
+                        <span className="flex-1 min-w-0 text-sm font-semibold text-flat-dark">{a.name}</span>
+                        <span
+                          className={`shrink-0 text-[11px] font-bold ${
+                            a.busy ? "text-flat-red" : "text-flat-emerald-dark"
+                          }`}
+                        >
+                          {a.busy ? "忙碌" : "有空"}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground leading-snug">
+                  示範：綠點有空、紅點忙碌（當日已排滿 {ASSIGNEE_BUSY_DAY_THRESHOLD}{" "}
+                  筆者不可選）；亦可至
+                  <Link href="/user" className="mx-0.5 font-bold text-flat-blue underline-offset-2 hover:underline">
+                    使用者資料
+                  </Link>
+                  為負責人標記各日有空／忙碌，並會反映於此。勾多位時會各建立一筆相同行程。
+                </p>
+              </fieldset>
               <label className="flex items-start gap-2.5 rounded-lg border border-amber-300/60 bg-amber-50/50 px-3 py-2.5 cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-amber-400/50">
                 <input
                   type="checkbox"
