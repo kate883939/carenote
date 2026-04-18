@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { X, CalendarRange } from "lucide-react";
-import type { BodyReportDateRange } from "@/lib/body-report-trend";
+import {
+  BODY_REPORT_DEFAULT_RANGE,
+  type BodyReportDateRange,
+} from "@/lib/body-report-trend";
 
 export type { BodyReportDateRange };
 
@@ -33,11 +36,8 @@ export function BodyReportRangeModal({ open, onClose, onConfirm }: BodyReportRan
 
   useEffect(() => {
     if (!open) return;
-    const today = new Date();
-    const endD = toIso(today);
-    const startD = addDays(endD, -6);
-    setStart(startD);
-    setEnd(endD);
+    setStart(BODY_REPORT_DEFAULT_RANGE.start);
+    setEnd(BODY_REPORT_DEFAULT_RANGE.end);
     setError(null);
   }, [open]);
 

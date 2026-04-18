@@ -17,6 +17,12 @@ export interface BodyTrendRow {
   stool: number;
 }
 
+/** 與示範趨勢資料對齊的預設區間（身體報告選日期用） */
+export const BODY_REPORT_DEFAULT_RANGE: BodyReportDateRange = {
+  start: "2026-03-28",
+  end: "2026-04-10",
+};
+
 /** 2026/3/28 — 2026/4/10 示範趨勢 */
 export const BODY_REPORT_TREND_FULL: BodyTrendRow[] = [
   { iso: "2026-03-28", label: "3/28", sys: 146, dia: 90, hr: 76, temp: 36.5, urine: 4, stool: 1 },
