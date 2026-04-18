@@ -5,7 +5,7 @@ import Image from "next/image";
 import {
   ClockArrowUp,
   Search,
-  PenLine,
+  FileText,
   Mic,
   Upload,
   Copy,
@@ -14,11 +14,11 @@ import {
   ChevronUp,
   Check,
   X,
-  Camera,
   Sparkles,
   Loader2,
   Activity,
   User,
+  Image as PhotoIcon,
 } from "lucide-react";
 import { BodyReportModal } from "@/components/body-report-modal";
 import { BodyReportRangeModal } from "@/components/body-report-range-modal";
@@ -26,7 +26,7 @@ import type { BodyReportDateRange } from "@/lib/body-report-trend";
 
 const SOURCE_ICONS: Record<string, typeof Mic> = {
   voice: Mic,
-  text: PenLine,
+  text: FileText,
   upload: Upload,
 };
 
@@ -44,6 +44,13 @@ interface HistoryRecord {
   isAlert?: boolean;
   originalFile?: string;
   imageUrl?: string;
+}
+
+/** 示範資料無真實圖檔時，以圖片 icon 表示附件（勿用文件圖） */
+const IMAGE_ATTACHMENT_PLACEHOLDER = "__image_attachment__";
+
+function isImagePlaceholder(src: string) {
+  return src === IMAGE_ATTACHMENT_PLACEHOLDER;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -64,7 +71,7 @@ const mockRecords: HistoryRecord[] = [
     preview: "午餐照片 — 魚湯、地瓜葉、白飯",
     fullText: "拍照記錄午餐：主食、蔬菜與湯品。示範情境中進食狀況穩定。",
     originalFile: "IMG_1023.jpg",
-    imageUrl: "/file.svg",
+    imageUrl: IMAGE_ATTACHMENT_PLACEHOLDER,
   },
   {
     id: "2", date: "今天 4/10", time: "09:12", category: "用藥", tags: ["飲食"], source: "voice",
@@ -105,7 +112,7 @@ const mockRecords: HistoryRecord[] = [
     preview: "午餐照片 — 稀飯、青菜、蒸魚",
     fullText: "拍照記錄午餐內容，示範用於追蹤每日飲食變化。",
     originalFile: "IMG_8990.jpg",
-    imageUrl: "/file.svg",
+    imageUrl: IMAGE_ATTACHMENT_PLACEHOLDER,
   },
   {
     id: "8", date: "昨天 4/9", time: "08:10", category: "用藥", tags: ["飲食"], source: "voice",
@@ -133,7 +140,7 @@ const mockRecords: HistoryRecord[] = [
     preview: "藥袋拍照 — 確認藥物種類與劑量",
     fullText: "拍照記錄本週藥袋，示範用於核對藥物與服用規劃。",
     originalFile: "IMG_8975.jpg",
-    imageUrl: "/file.svg",
+    imageUrl: IMAGE_ATTACHMENT_PLACEHOLDER,
   },
   // — 4/7 —
   {
@@ -415,17 +422,31 @@ export default function RecordPage() {
                         {!isExpanded && r.imageUrl ? (
                           <div className="flex items-center gap-3 mt-1.5">
                             <button
+                              type="button"
                               onClick={(e) => { e.stopPropagation(); setPreviewImage(r.imageUrl!); }}
-                              className="relative w-14 h-14 rounded-md overflow-hidden shrink-0 group"
+                              className="shrink-0 rounded-md border border-flat-gray-dark bg-flat-gray p-1.5 flex items-center justify-center group"
                             >
-                              <Image
-                                src={r.imageUrl}
-                                alt={r.preview}
-                                fill
-                                className="object-cover"
-                              />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
-                                <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 drop-shadow transition-opacity duration-200" />
+                              <div className="relative h-10 w-10 overflow-hidden rounded bg-white flex items-center justify-center">
+                                {isImagePlaceholder(r.imageUrl) ? (
+                                  <>
+                                    <PhotoIcon className="w-6 h-6 text-flat-blue" aria-hidden />
+                                    <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 flex items-center justify-center">
+                                      <Eye className="w-3.5 h-3.5 text-flat-dark opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Image
+                                      src={r.imageUrl}
+                                      alt={r.preview}
+                                      fill
+                                      className="object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
+                                      <Eye className="w-3.5 h-3.5 text-white opacity-0 group-hover:opacity-100 drop-shadow transition-opacity duration-200" />
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             </button>
                             <p className="text-sm leading-relaxed line-clamp-2 text-flat-dark">{r.fullText}</p>
@@ -439,20 +460,36 @@ export default function RecordPage() {
                         {isExpanded && r.imageUrl && (
                           <div className="mt-3">
                             <button
+                              type="button"
                               onClick={(e) => { e.stopPropagation(); setPreviewImage(r.imageUrl!); }}
-                              className="relative w-full h-40 rounded-lg overflow-hidden group"
+                              className="relative w-full h-40 rounded-lg overflow-hidden group border border-flat-gray-dark bg-flat-gray"
                             >
-                              <Image
-                                src={r.imageUrl}
-                                alt={r.preview}
-                                fill
-                                className="object-cover"
-                              />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
-                                <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 rounded-full p-2">
-                                  <Eye className="w-5 h-5 text-flat-dark" />
-                                </div>
-                              </div>
+                              {isImagePlaceholder(r.imageUrl) ? (
+                                <>
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <PhotoIcon className="w-16 h-16 text-flat-blue shrink-0" aria-hidden />
+                                  </div>
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 flex items-center justify-center">
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 rounded-full p-2">
+                                      <Eye className="w-5 h-5 text-flat-dark" />
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <Image
+                                    src={r.imageUrl}
+                                    alt={r.preview}
+                                    fill
+                                    className="object-cover"
+                                  />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 rounded-full p-2">
+                                      <Eye className="w-5 h-5 text-flat-dark" />
+                                    </div>
+                                  </div>
+                                </>
+                              )}
                             </button>
                           </div>
                         )}
@@ -460,7 +497,7 @@ export default function RecordPage() {
                         {isExpanded && r.originalFile && (
                           <div className="mt-3 pt-3 border-t-2 border-flat-gray-dark">
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              {r.imageUrl ? <Camera className="w-4 h-4" /> : <SourceIcon className="w-4 h-4" />}
+                              {r.imageUrl ? <PhotoIcon className="w-4 h-4" aria-hidden /> : <SourceIcon className="w-4 h-4" />}
                               <span className="font-medium">原始檔：{r.originalFile}</span>
                               {r.imageUrl ? (
                                 <button
@@ -516,13 +553,24 @@ export default function RecordPage() {
           >
             <X className="w-6 h-6 text-white" />
           </button>
-          <div className="relative w-full max-w-lg aspect-[4/3] rounded-lg overflow-hidden">
-            <Image
-              src={previewImage}
-              alt="照片預覽"
-              fill
-              className="object-contain"
-            />
+          <div className="relative w-full max-w-lg min-h-[12rem] rounded-lg overflow-hidden bg-white">
+            {isImagePlaceholder(previewImage) ? (
+              <div className="flex flex-col items-center justify-center gap-3 px-8 py-12">
+                <PhotoIcon className="w-24 h-24 text-flat-blue/90 shrink-0" aria-hidden />
+                <p className="text-sm font-medium text-muted-foreground text-center">
+                  示範：照片預覽（無實際圖檔）
+                </p>
+              </div>
+            ) : (
+              <div className="relative aspect-[4/3] w-full">
+                <Image
+                  src={previewImage}
+                  alt="照片預覽"
+                  fill
+                  className="object-contain"
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
