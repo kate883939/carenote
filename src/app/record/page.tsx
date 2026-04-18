@@ -64,6 +64,40 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const mockRecords: HistoryRecord[] = [
+  // — 4/18（六） —
+  {
+    id: "15", date: "4/18（六）", time: "21:15", category: "排泄", tags: [], source: "text",
+    recordedBy: "家屬A",
+    preview: "晚間如廁順利，無不適",
+    fullText: "晚間如廁一次，過程順利，示範紀錄供追蹤日常規律。",
+  },
+  {
+    id: "16", date: "4/18（六）", time: "17:40", category: "飲食", tags: [], source: "upload",
+    recordedBy: "照護人員A",
+    preview: "晚餐 — 清淡為主，食量尚可",
+    fullText: "晚餐以清淡為主，食量與前日相近，示範情境中進食狀況穩定。",
+    originalFile: "IMG_20260418_1740.jpg",
+    imageUrl: IMAGE_ATTACHMENT_PLACEHOLDER,
+  },
+  {
+    id: "17", date: "4/18（六）", time: "14:05", category: "生命徵象", tags: [], source: "text",
+    recordedBy: "家屬B",
+    preview: "午後量血壓、心率、體溫",
+    fullText: "午後量測生命徵象，數值於示範範圍內，已記錄供後續比對。",
+  },
+  {
+    id: "18", date: "4/18（六）", time: "10:30", category: "情緒", tags: [], source: "voice",
+    recordedBy: "家屬A",
+    preview: "上午心情平穩，願意簡短聊天",
+    fullText: "上午情緒平穩，願意簡短互動。示範語音紀錄供照護交接參考。",
+    originalFile: "voice_20260418_1030.m4a",
+  },
+  {
+    id: "19", date: "4/18（六）", time: "08:20", category: "用藥", tags: ["飲食"], source: "text",
+    recordedBy: "家屬B",
+    preview: "早餐後依醫囑用藥",
+    fullText: "早餐後依規劃用藥，觀察至午餐前無明顯不適，示範紀錄已留存。",
+  },
   // — 今天 4/10 —
   {
     id: "1", date: "今天 4/10", time: "14:05", category: "飲食", tags: [], source: "upload",
